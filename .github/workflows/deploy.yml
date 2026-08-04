@@ -13,22 +13,22 @@ jobs:
     - name: Checkout Code
       uses: actions/checkout@v4
 
-    # 1. Automatically load and format the private key securely in memory
-    - name: Setup SSH Agent
-      uses: webfactory/ssh-agent@v0.9.0
-      with:
-        ssh-private-key: ${{ secrets.PA_SSH_KEY }}
-
-    # 2. Register the PythonAnywhere server fingerprint to bypass trust prompts
-    - name: Add Host to Known Hosts
+    # Configure SSH key file and known_hosts (uses the PA_SSH_KEY secret)
+    - name: Configure SSH key and known_hosts
       run: |
         mkdir -p ~/.ssh
-        ssh-keyscan -H ${{ secrets.PA_HOST }} >> ~/.ssh/known_hosts
+        # Ensure the key file gets secure permissions
+        umask 077
+        # Write the private key into a file (must be the full private key text in secret)
+        echo "${{ secrets.PA_SSH_KEY }}" > ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa
+        # Add remote host fingerprint to known_hosts to avoid interactive prompt
+        ssh-keyscan -H "${{ secrets.PA_HOST }}" >> ~/.ssh/known_hosts
 
-    # 3. Securely log in and deploy your Django app modifications
+    # Remotely pull latest changes and reload the app using the explicit key
     - name: Remote Pull and Web Reload
       run: |
-        ssh ${{ secrets.PA_USERNAME }}@${{ secrets.PA_HOST }} << 'EOF'
+        ssh -i ~/.ssh/id_rsa -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes ${{ secrets.PA_USERNAME }}@${{ secrets.PA_HOST }} << 'EOF'
           cd ~/PrayerGuestsApp
           git pull origin main
           workon myenv
