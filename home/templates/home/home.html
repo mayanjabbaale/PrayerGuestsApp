@@ -1,0 +1,172 @@
+{% load static tailwind_tags %}
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>God's Nature — Prayer Guests</title>
+    {% tailwind_css %}
+    <link rel="stylesheet" href="{% static 'css/styles.css' %}">
+
+</head>
+<body class="bg-gray-200 font-sans">
+
+    <!-- ============ HEADER ============ -->
+    <header class="text-center py-16 bg-white border-b-4 border-black relative overflow-hidden">
+        <div class="flex justify-center gap-3 mb-6">
+            <span class="inline-block w-6 h-6 rounded-full bg-[var(--bauhaus-yellow)]"></span>
+            <span class="inline-block w-6 h-6 bg-[var(--bauhaus-red)]"></span>
+            <span class="inline-block w-0 h-0 border-l-[12px] border-r-[12px] border-b-[20px] border-l-transparent border-r-transparent border-b-[var(--bauhaus-blue)]"></span>
+        </div>
+        <h1 class="text-5xl md:text-6xl font-bold uppercase">God's Nature</h1>
+        <p class="mt-4 text-lg md:text-xl tracking-wide">Be blessed in God's nature</p>
+        <span class="hidden md:block absolute top-0 right-0 w-24 h-24 bg-[var(--bauhaus-blue)]"></span>
+        <span class="hidden md:block absolute bottom-0 left-0 w-16 h-16 rounded-full bg-[var(--bauhaus-red)]"></span>
+    </header>
+
+    <!-- ============ MAIN ============ -->
+    <main class="max-w-7xl mx-auto px-6 py-12">
+
+        <div class="flex items-end justify-between mb-6">
+            <div>
+                <h2 class="text-3xl font-bold uppercase tracking-wider">PRAYER GUESTS</h2>
+                <p class="text-sm uppercase tracking-wider text-gray-600 mt-1">
+                    Click any cell to edit · Click the eye icon for full details
+                </p>
+            </div>
+            <button id="add-row"
+                    class="px-6 py-3 bg-[var(--bauhaus-blue)] text-white font-bold uppercase tracking-wider border-4 border-black hover:bg-black transition-colors">
+                + Add Guest
+            </button>
+        </div>
+
+        <!-- Stat strip: live counts from the DB -->
+        <div class="grid grid-cols-3 gap-0 mb-8 border-4 border-black">
+            <div class="bg-[var(--bauhaus-red)] text-white px-4 py-3 border-r-4 border-black">
+                <div class="text-xs uppercase tracking-widest opacity-80">Total</div>
+                <div id="stat-total" class="text-2xl font-bold">{{ guests|length }}</div>
+            </div>
+            <div class="bg-[var(--bauhaus-yellow)] text-black px-4 py-3 border-r-4 border-black">
+                <div class="text-xs uppercase tracking-widest opacity-80">Prayed For</div>
+                <div id="stat-prayed" class="text-2xl font-bold">—</div>
+            </div>
+            <div class="bg-[var(--bauhaus-blue)] text-white px-4 py-3">
+                <div class="text-xs uppercase tracking-widest opacity-80">Awaiting Prayer</div>
+                <div id="stat-pending" class="text-2xl font-bold">—</div>
+            </div>
+        </div>
+
+        <!-- Table -->
+        <div class="bg-white border-4 border-black overflow-x-auto">
+            <table class="w-full border-collapse table-fixed">
+                <colgroup>
+                    <col class="w-[18%]">   <!-- Name -->
+                    <col class="w-[8%]">    <!-- Age -->
+                    <col class="w-[15%]">   <!-- Phone -->
+                    <col class="w-[20%]">   <!-- Address -->
+                    <col>                  <!-- Notes (flex) -->
+                    <col class="w-[6%]">    <!-- Prayed -->
+                    <col class="w-[7rem]">  <!-- Actions -->
+                </colgroup>
+                <thead class="bg-[var(--bauhaus-black)] text-white">
+                    <tr>
+                        <th class="text-left px-4 py-3 uppercase tracking-wider text-sm font-bold border-r-2 border-black">Name</th>
+                        <th class="text-center px-4 py-3 uppercase tracking-wider text-sm font-bold border-r-2 border-black">Age</th>
+                        <th class="text-left px-4 py-3 uppercase tracking-wider text-sm font-bold border-r-2 border-black">Phone Number</th>
+                        <th class="text-left px-4 py-3 uppercase tracking-wider text-sm font-bold border-r-2 border-black">Address</th>
+                        <th class="text-left px-4 py-3 uppercase tracking-wider text-sm font-bold border-r-2 border-black">Prayer Notes</th>
+                        <th class="text-center px-4 py-3 uppercase tracking-wider text-sm font-bold border-r-2 border-black" title="Prayed for">✓</th>
+                        <th class="px-4 py-3 uppercase tracking-wider text-sm font-bold">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="rows">
+                    {% for g in guests %}
+                    <tr data-id="{{ g.id }}">
+                        <td class="text-cell px-4 py-3 border-r-2 border-black align-top"
+                            contenteditable="true" data-field="name" data-placeholder="Full name">{{ g.name }}</td>
+                        <td class="text-cell is-num px-4 py-3 border-r-2 border-black align-top"
+                            contenteditable="true" data-field="age" data-placeholder="0">{{ g.age }}</td>
+                        <td class="text-cell px-4 py-3 border-r-2 border-black align-top"
+                            contenteditable="true" data-field="phone_number" data-placeholder="+1 555 000 0000">{{ g.phone_number }}</td>
+                        <td class="text-cell px-4 py-3 border-r-2 border-black align-top"
+                            contenteditable="true" data-field="address" data-placeholder="Street, City">{{ g.address }}</td>
+                        <td class="notes-cell px-4 py-3 border-r-2 border-black align-top"
+                            data-field="prayer_notes" tabindex="0">{{ g.prayer_notes|default:"" }}</td>
+                        <td class="prayed-cell px-4 py-3 border-r-2 border-black align-top{% if g.prayed_for %} is-prayed{% endif %}"
+                            data-field="prayed_for" tabindex="0"
+                            title="Click to toggle prayed for">{% if g.prayed_for %}✓{%else%}✗{% endif %}</td>
+                        <td class="px-4 py-3 align-top">
+                            <div class="flex gap-1 justify-center">
+                                <button class="row-action" data-action="view" title="View details" aria-label="View details">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg>
+                                </button>
+                                <button class="row-action is-danger" data-action="del" title="Delete row" aria-label="Delete row">&times;</button>
+                            </div>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr id="empty-state"><td colspan="7" class="px-4 py-12 text-center text-gray-500 uppercase tracking-wider">
+                        No guests yet — click <span class="font-bold">+ Add Guest</span>
+                    </td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </main>
+
+    <!-- ============ PRAYER NOTES POPOVER ============ -->
+    <div id="notes-overlay" class="overlay" role="dialog" aria-modal="true" aria-labelledby="notes-overlay-title">
+        <div class="popover">
+            <div class="popover-title" id="notes-overlay-title">Edit Prayer Notes</div>
+            <textarea id="notes-textarea" placeholder="Write your prayer notes here…"></textarea>
+            <div class="popover-actions">
+                <button id="notes-cancel" class="btn btn-ghost" type="button">Cancel</button>
+                <button id="notes-save" class="btn btn-primary" type="button">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ============ DETAILS DRAWER ============ -->
+    <div id="drawer-overlay" class="overlay" aria-hidden="true"></div>
+    <aside id="drawer" class="drawer" role="dialog" aria-modal="true" aria-labelledby="drawer-title">
+        <div class="drawer-header">
+            <h3 id="drawer-title">Guest Details</h3>
+            <button id="drawer-close" class="row-action" aria-label="Close">&times;</button>
+        </div>
+        <div class="drawer-body">
+            <div class="drawer-field">
+                <label>Name</label>
+                <div class="value" data-drawer="name"></div>
+            </div>
+            <div class="drawer-field">
+                <label>Age</label>
+                <div class="value" data-drawer="age"></div>
+            </div>
+            <div class="drawer-field">
+                <label>Phone Number</label>
+                <div class="value" data-drawer="phone_number"></div>
+            </div>
+            <div class="drawer-field">
+                <label>Address</label>
+                <div class="value" data-drawer="address"></div>
+            </div>
+            <div class="drawer-field">
+                <label>
+                    Prayer Notes
+                    <span class="notes-badge" id="notes-badge">0 chars</span>
+                </label>
+                <div class="value" data-drawer="prayer_notes"></div>
+            </div>
+            <div class="drawer-field">
+                <label>Prayed For</label>
+                <div class="value" data-drawer="prayed_for"></div>
+            </div>
+        </div>
+        <div class="drawer-footer">
+            <button id="drawer-edit-notes" class="btn btn-primary" type="button">Edit Notes</button>
+        </div>
+    </aside>
+    <script src="{% static 'js/script.js' %}"></script>
+</body>
+</html>

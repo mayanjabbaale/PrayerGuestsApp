@@ -1,0 +1,308 @@
+/* ============================================
+           Bauhaus tokens
+============================================ */
+:root {
+  --bauhaus-red: #e63946;
+  --bauhaus-yellow: #f4c430;
+  --bauhaus-blue: #1d4e89;
+  --bauhaus-black: #1a1a1a;
+  --bauhaus-white: #fafafa;
+  --bauhaus-beige: #e8dcc4;
+}
+
+/* Larger base font for the 56-year-old user */
+body {
+  font-size: 16px;
+}
+.text-cell,
+.notes-cell {
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+/* Inline-editable text cells (name / age / phone / address) */
+.text-cell {
+  cursor: text;
+  transition: background-color 120ms ease;
+}
+.text-cell:hover {
+  background-color: #f5f5f5;
+}
+.text-cell:focus {
+  outline: 3px solid var(--bauhaus-yellow);
+  outline-offset: -3px;
+  background: #fff;
+}
+.text-cell:empty::before {
+  content: attr(data-placeholder);
+  color: #9ca3af;
+  pointer-events: none;
+}
+/* Centered numeric cells (age) */
+.text-cell.is-num {
+  text-align: center;
+}
+
+/* Prayed-for checkbox cell */
+.prayed-cell {
+  text-align: center;
+  cursor: pointer;
+  user-select: none;
+  font-size: 1.25rem;
+}
+.prayed-cell:hover {
+  background-color: var(--bauhaus-yellow);
+}
+.prayed-cell.is-prayed {
+  color: var(--bauhaus-red);
+}
+
+/* ============================================
+           A. Prayer-notes cell truncation
+              (no horizontal growth, clean cutoff)
+           ============================================ */
+.notes-cell {
+  position: relative;
+  display: -webkit-box;
+  line-clamp: 2;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  cursor: pointer;
+  max-width: 28rem;
+  padding-bottom: 1.25rem !important;
+  transition: background-color 120ms ease;
+}
+.notes-cell::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 1.5rem;
+  pointer-events: none;
+  background: linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0) 0%,
+    #ffffff 90%
+  );
+}
+.notes-cell:hover::after {
+  background: linear-gradient(
+    to bottom,
+    rgba(244, 196, 48, 0) 0%,
+    var(--bauhaus-yellow) 90%
+  );
+}
+.notes-cell:hover {
+  background-color: var(--bauhaus-yellow);
+}
+.notes-cell.is-empty {
+  color: #9ca3af;
+  font-style: italic;
+}
+.notes-cell.is-empty::after {
+  display: none;
+}
+
+/* ============================================
+           Row action buttons
+           ============================================ */
+.row-action {
+  width: 2.25rem;
+  height: 2.25rem;
+  border: 2px solid var(--bauhaus-black);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+  line-height: 1;
+  background: #fff;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease,
+    border-color 120ms ease;
+}
+.row-action:hover {
+  background: var(--bauhaus-black);
+  color: #fff;
+}
+.row-action.is-danger:hover {
+  background: var(--bauhaus-red);
+  color: #fff;
+  border-color: var(--bauhaus-red);
+}
+
+/* ============================================
+           Popover + Drawer (shared overlay)
+           ============================================ */
+.overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  background: rgba(26, 26, 26, 0.55);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+.overlay.is-open {
+  display: flex;
+}
+
+.popover {
+  background: #fff;
+  border: 4px solid var(--bauhaus-black);
+  width: 100%;
+  max-width: 36rem;
+  padding: 1.5rem;
+}
+.popover-title {
+  font-size: 1.125rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--bauhaus-black);
+  margin-bottom: 0.75rem;
+}
+.popover textarea {
+  width: 100%;
+  min-height: 12rem;
+  border: 3px solid var(--bauhaus-black);
+  padding: 0.75rem 1rem;
+  font-size: 18px;
+  line-height: 1.55;
+  font-family: inherit;
+  resize: vertical;
+  outline: none;
+}
+.popover textarea:focus {
+  border-color: var(--bauhaus-blue);
+}
+
+.popover-actions {
+  display: flex;
+  gap: 0.75rem;
+  justify-content: flex-end;
+  margin-top: 1rem;
+}
+.btn {
+  padding: 0.625rem 1.25rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  border: 3px solid var(--bauhaus-black);
+  font-size: 0.95rem;
+  transition:
+    background-color 120ms ease,
+    color 120ms ease;
+}
+.btn-primary {
+  background: var(--bauhaus-blue);
+  color: #fff;
+}
+.btn-primary:hover {
+  background: var(--bauhaus-black);
+}
+.btn-ghost {
+  background: #fff;
+  color: var(--bauhaus-black);
+}
+.btn-ghost:hover {
+  background: var(--bauhaus-beige);
+}
+
+/* ============================================
+           F. Right-side drawer
+           ============================================ */
+.drawer {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: min(28rem, 92vw);
+  background: #fff;
+  border-left: 4px solid var(--bauhaus-black);
+  z-index: 70;
+  transform: translateX(100%);
+  transition: transform 200ms ease-out;
+  display: flex;
+  flex-direction: column;
+}
+.drawer.is-open {
+  transform: translateX(0);
+}
+.drawer-header {
+  padding: 1.25rem 1.5rem;
+  border-bottom: 4px solid var(--bauhaus-black);
+  background: var(--bauhaus-black);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.drawer-header h3 {
+  font-size: 1.25rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.drawer-body {
+  padding: 1.5rem;
+  overflow-y: auto;
+  flex: 1;
+}
+.drawer-field {
+  margin-bottom: 1.25rem;
+}
+.drawer-field label {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: #6b7280;
+  margin-bottom: 0.25rem;
+}
+.drawer-field .value {
+  font-size: 17px;
+  line-height: 1.5;
+  border-left: 4px solid var(--bauhaus-yellow);
+  padding-left: 0.75rem;
+  white-space: pre-wrap;
+  word-break: break-word;
+  min-height: 1.5em;
+}
+.drawer-field .value.is-empty {
+  color: #9ca3af;
+  font-style: italic;
+}
+.drawer-footer {
+  padding: 1rem 1.5rem;
+  border-top: 4px solid var(--bauhaus-black);
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  background: var(--bauhaus-beige);
+}
+.notes-badge {
+  display: inline-block;
+  background: var(--bauhaus-yellow);
+  color: var(--bauhaus-black);
+  font-weight: 700;
+  padding: 0.125rem 0.5rem;
+  margin-left: 0.5rem;
+  border: 2px solid var(--bauhaus-black);
+  font-size: 0.75rem;
+  letter-spacing: 0.05em;
+}
+
+@media (max-width: 640px) {
+  .popover {
+    max-width: 100%;
+  }
+  .drawer {
+    width: 100vw;
+    border-left: none;
+  }
+}
