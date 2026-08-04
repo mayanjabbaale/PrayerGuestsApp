@@ -84,6 +84,7 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'config.wsgi.application'
+token = '47e70c9339a933951b74f708643fef01c3c6e83b'
 
 
 # Database

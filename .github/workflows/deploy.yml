@@ -1,4 +1,4 @@
-name: Deploy to PythonAnywhere
+name: Deploy to PythonAnywhere (API-only)
 
 on:
   push:
@@ -10,57 +10,126 @@ jobs:
     runs-on: ubuntu-latest
 
     env:
-      PA_HOST: ${{ secrets.PA_HOST }}
+      PA_API_TOKEN: ${{ secrets.PA_API_TOKEN }}
+      PA_API_BASE: ${{ secrets.PA_API_BASE || 'https://www.pythonanywhere.com/api/v0' }}
       PA_USERNAME: ${{ secrets.PA_USERNAME }}
-      PA_SSH_KEY: ${{ secrets.PA_SSH_KEY }}
+      PA_DOMAIN: ${{ secrets.PA_DOMAIN }}
       PA_PROJECT_DIR: ${{ secrets.PA_PROJECT_DIR || '/home/tardigrade/PrayerGuestsApp' }}
       PA_VENV_PATH: ${{ secrets.PA_VENV_PATH || '/home/tardigrade/.virtualenvs/myenv' }}
-      PA_WSGI_PATH: ${{ secrets.PA_WSGI_PATH || '/var/www/tardigrade_pythonanywhere_com_wsgi.py' }}
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Setup SSH agent
-        uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: ${{ secrets.PA_SSH_KEY }}
-
-      - name: Verify SSH variables
-        env:
-          PA_HOST: ${{ secrets.PA_HOST }}
-          PA_USERNAME: ${{ secrets.PA_USERNAME }}
+      - name: Verify required secrets
         run: |
-          if [ -z "${PA_HOST:-}" ] || [ -z "${PA_USERNAME:-}" ]; then
-            echo "::error::PA_HOST or PA_USERNAME is not set"
+          if [ -z "${PA_API_TOKEN:-}" ] || [ -z "${PA_USERNAME:-}" ] || [ -z "${PA_DOMAIN:-}" ]; then
+            echo "::error::PA_API_TOKEN, PA_USERNAME, or PA_DOMAIN is not set"
             exit 1
           fi
-          echo "PA_HOST and PA_USERNAME are set."
+          echo "Required secrets are present."
 
-      - name: Add host to known_hosts
-        run: |
-          mkdir -p ~/.ssh
-          ssh-keyscan -H "${{ secrets.PA_HOST }}" >> ~/.ssh/known_hosts
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
 
-      - name: Deploy to PythonAnywhere
-        shell: bash
+      - name: Install requests
+        run: pip install requests
+
+      - name: Run deploy commands via PythonAnywhere Console API
         env:
-          PA_HOST: ${{ secrets.PA_HOST }}
-          PA_USERNAME: ${{ secrets.PA_USERNAME }}
-          PA_PROJECT_DIR: ${{ secrets.PA_PROJECT_DIR || '/home/tardigrade/PrayerGuestsApp' }}
-          PA_VENV_PATH: ${{ secrets.PA_VENV_PATH || '/home/tardigrade/.virtualenvs/myenv' }}
-          PA_WSGI_PATH: ${{ secrets.PA_WSGI_PATH || '/var/www/tardigrade_pythonanywhere_com_wsgi.py' }}
+          PA_PROJECT_DIR: ${{ env.PA_PROJECT_DIR }}
+          PA_VENV_PATH: ${{ env.PA_VENV_PATH }}
         run: |
-          set -euo pipefail
-          ssh -o StrictHostKeyChecking=yes -o BatchMode=yes "$PA_USERNAME@$PA_HOST" "
-            set -e
-            cd '$PA_PROJECT_DIR'
-            git fetch origin main
-            git checkout main
-            git pull origin main
-            source '$PA_VENV_PATH/bin/activate'
-            python -m pip install -r requirements.txt
-            python manage.py migrate --noinput
-            python manage.py collectstatic --noinput
-            touch '$PA_WSGI_PATH'
-          "
+          python - <<'PYEOF'
+          import os
+          import sys
+          import time
+          import uuid
+          import requests
+
+          API_BASE = os.environ["PA_API_BASE"]
+          TOKEN = os.environ["PA_API_TOKEN"]
+          USERNAME = os.environ["PA_USERNAME"]
+          PROJECT_DIR = os.environ["PA_PROJECT_DIR"]
+          VENV_PATH = os.environ["PA_VENV_PATH"]
+
+          HEADERS = {"Authorization": f"Token {TOKEN}"}
+          MARKER = f"__DEPLOY_DONE_{uuid.uuid4().hex}__"
+
+          def api(method, path, **kwargs):
+              url = f"{API_BASE}/user/{USERNAME}{path}"
+              resp = requests.request(method, url, headers=HEADERS, timeout=30, **kwargs)
+              if not resp.ok:
+                  print(f"::error::{method} {path} failed: {resp.status_code} {resp.text}")
+                  sys.exit(1)
+              return resp
+
+          # 1. Create a bash console
+          console_resp = api(
+              "POST",
+              "/consoles/",
+              json={"executable": "bash", "working_directory": PROJECT_DIR},
+          )
+          console = console_resp.json()
+          console_id = console["id"]
+          print(f"Created console {console_id}")
+
+          try:
+              # Give the console a moment to initialize
+              time.sleep(3)
+
+              # 2. Build and send the deploy command
+              cmd = (
+                  f"cd '{PROJECT_DIR}' && "
+                  f"git fetch origin main && git checkout main && git pull origin main && "
+                  f"source '{VENV_PATH}/bin/activate' && "
+                  f"python -m pip install -r requirements.txt && "
+                  f"python manage.py migrate --noinput && "
+                  f"python manage.py collectstatic --noinput && "
+                  f"echo {MARKER}_OK || echo {MARKER}_FAIL\n"
+              )
+              api("POST", f"/consoles/{console_id}/send_input/", json={"input": cmd})
+              print("Deploy command sent, waiting for completion...")
+
+              # 3. Poll for the marker, up to ~5 minutes
+              deadline = time.time() + 300
+              output = ""
+              while time.time() < deadline:
+                  time.sleep(5)
+                  out_resp = api("GET", f"/consoles/{console_id}/get_latest_output/")
+                  output = out_resp.json().get("output", "")
+                  if MARKER in output:
+                      break
+              else:
+                  print("::error::Timed out waiting for deploy command to finish")
+                  print(output[-4000:])
+                  sys.exit(1)
+
+              print(output[-4000:])  # tail of console output for logs
+
+              if f"{MARKER}_FAIL" in output:
+                  print("::error::Deploy command reported failure")
+                  sys.exit(1)
+
+              print("Deploy commands completed successfully.")
+
+          finally:
+              # 4. Clean up the console regardless of outcome
+              try:
+                  api("DELETE", f"/consoles/{console_id}/")
+                  print(f"Deleted console {console_id}")
+              except SystemExit:
+                  pass
+          PYEOF
+
+      - name: Reload web app via PythonAnywhere API
+        run: |
+          status=$(curl -s -o /tmp/reload_response.json -w "%{http_code}" -X POST \
+            -H "Authorization: Token ${PA_API_TOKEN}" \
+            "${PA_API_BASE}/user/${PA_USERNAME}/webapps/${PA_DOMAIN}/reload/")
+          echo "Reload response ($status):"
+          cat /tmp/reload_response.json
+          if [ "$status" -ne 200 ]; then
+            echo "::error::Reload failed with status $status"
+            exit 1
+          fi
+          echo "Web app reloaded successfully."
