@@ -1,40 +1,44 @@
-name: Django CI/CD Pipeline
+name: Deploy to PythonAnywhere
 
 on:
   push:
     branches:
-      - main  # Triggers the deployment when pushing to main
+      - main
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
+    env:
+      PA_HOST: ${{ secrets.PA_HOST }}
+      PA_USERNAME: ${{ secrets.PA_USERNAME }}
+      PA_PROJECT_DIR: ${{ secrets.PA_PROJECT_DIR || '/home/tardigrade/PrayerGuestsApp' }}
+      PA_VENV_PATH: ${{ secrets.PA_VENV_PATH || '/home/tardigrade/.virtualenvs/myenv' }}
+      PA_WSGI_PATH: ${{ secrets.PA_WSGI_PATH || '/var/www/tardigrade_pythonanywhere_com_wsgi.py' }}
+
     steps:
-    - name: Checkout Code
-      uses: actions/checkout@v4
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-    # Configure SSH key file and known_hosts (uses the PA_SSH_KEY secret)
-    - name: Configure SSH key and known_hosts
-      run: |
-        mkdir -p ~/.ssh
-        # Ensure the key file gets secure permissions
-        umask 077
-        # Write the private key into a file (must be the full private key text in secret)
-        echo "${{ secrets.PA_SSH_KEY }}" > ~/.ssh/id_rsa
-        chmod 600 ~/.ssh/id_rsa
-        # Add remote host fingerprint to known_hosts to avoid interactive prompt
-        ssh-keyscan -H "${{ secrets.PA_HOST }}" >> ~/.ssh/known_hosts
+      - name: Configure SSH access
+        run: |
+          mkdir -p ~/.ssh
+          umask 077
+          echo "${{ secrets.PA_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H "$PA_HOST" >> ~/.ssh/known_hosts
 
-    # Remotely pull latest changes and reload the app using the explicit key
-    - name: Remote Pull and Web Reload
-      run: |
-        chmod 600 ~/.ssh/id_rsa
-        ssh -vvv -i ~/.ssh/id_rsa -o IdentitiesOnly=yes ${{ secrets.PA_USERNAME }}@${{ secrets.PA_HOST }} 'echo ok'
-        ssh -i ~/.ssh/id_rsa -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes ${{ secrets.PA_USERNAME }}@${{ secrets.PA_HOST }} << 'EOF'
-          cd ~/PrayerGuestsApp
-          git pull origin main
-          workon myenv
-          python manage.py migrate
-          python manage.py collectstatic --noinput
-          touch /var/www/tardigrade_pythonanywhere_com_wsgi.py
-        EOF
+      - name: Deploy to PythonAnywhere
+        run: |
+          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=yes "$PA_USERNAME@$PA_HOST" "
+            set -e
+            cd '$PA_PROJECT_DIR'
+            git fetch origin main
+            git checkout main
+            git pull origin main
+            source '$PA_VENV_PATH/bin/activate'
+            python -m pip install -r requirements.txt
+            python manage.py migrate --noinput
+            python manage.py collectstatic --noinput
+            touch '$PA_WSGI_PATH'
+          "
