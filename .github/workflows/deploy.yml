@@ -16,7 +16,8 @@ jobs:
       PA_DOMAIN: ${{ secrets.PA_DOMAIN }}
       PA_PROJECT_DIR: ${{ secrets.PA_PROJECT_DIR || '/home/tardigrade/PrayerGuestsApp' }}
       PA_VENV_PATH: ${{ secrets.PA_VENV_PATH || '/home/tardigrade/.virtualenvs/myenv' }}
-      CONSOLE_READY_TIMEOUT: "90"   # seconds to wait for console to accept input
+      PA_CONSOLE_ID: ${{ secrets.PA_CONSOLE_ID || '' }}
+      CONSOLE_READY_TIMEOUT: "90"   # seconds to wait for a cold console to accept input
       DEPLOY_TIMEOUT: "300"         # seconds to wait for deploy commands to finish
 
     steps:
@@ -40,6 +41,7 @@ jobs:
         env:
           PA_PROJECT_DIR: ${{ env.PA_PROJECT_DIR }}
           PA_VENV_PATH: ${{ env.PA_VENV_PATH }}
+          PA_CONSOLE_ID: ${{ env.PA_CONSOLE_ID }}
           CONSOLE_READY_TIMEOUT: ${{ env.CONSOLE_READY_TIMEOUT }}
           DEPLOY_TIMEOUT: ${{ env.DEPLOY_TIMEOUT }}
         run: |
@@ -57,13 +59,12 @@ jobs:
           VENV_PATH = os.environ["PA_VENV_PATH"]
           CONSOLE_READY_TIMEOUT = int(os.environ.get("CONSOLE_READY_TIMEOUT", "90"))
           DEPLOY_TIMEOUT = int(os.environ.get("DEPLOY_TIMEOUT", "300"))
+          PINNED_CONSOLE_ID = os.environ.get("PA_CONSOLE_ID") or None
 
           HEADERS = {"Authorization": f"Token {TOKEN}"}
           MARKER = f"__DEPLOY_DONE_{uuid.uuid4().hex}__"
 
           def api(method, path, expect_ok=True, **kwargs):
-              """Call the PA API. Returns the raw response; caller decides how to
-              interpret status codes when expect_ok=False."""
               url = f"{API_BASE}/user/{USERNAME}{path}"
               resp = requests.request(method, url, headers=HEADERS, timeout=30, **kwargs)
               if expect_ok and not resp.ok:
@@ -71,9 +72,38 @@ jobs:
                   sys.exit(1)
               return resp
 
+          def find_existing_console():
+              """Look for a live bash console already pointed at PROJECT_DIR."""
+              resp = api("GET", "/consoles/", expect_ok=False)
+              if resp.status_code != 200:
+                  return None
+              for c in resp.json():
+                  if (
+                      c.get("executable") == "bash"
+                      and c.get("working_directory") == PROJECT_DIR
+                  ):
+                      return c["id"]
+              return None
+
+          def console_is_responsive(console_id, quick_timeout=10):
+              """Probe with a trivial send_input to check if this console is warm."""
+              deadline = time.time() + quick_timeout
+              while time.time() < deadline:
+                  resp = api(
+                      "POST",
+                      f"/consoles/{console_id}/send_input/",
+                      expect_ok=False,
+                      json={"input": "\n"},
+                  )
+                  if resp.status_code == 200:
+                      return True
+                  if resp.status_code == 412:
+                      time.sleep(2)
+                      continue
+                  return False  # e.g. 404 - console no longer exists
+              return False
+
           def send_input_with_retry(console_id, text, timeout):
-              """POST send_input, retrying on 412 (console backend not started yet)
-              with backoff, until it succeeds or timeout elapses."""
               deadline = time.time() + timeout
               attempt = 0
               delay = 3
@@ -90,36 +120,50 @@ jobs:
                   if resp.status_code == 412:
                       if time.time() >= deadline:
                           print(f"::error::Console {console_id} never became ready "
-                                f"after {timeout}s (still 412 on attempt {attempt})")
+                                f"after {timeout}s")
                           sys.exit(1)
                       print(f"Console not ready yet (attempt {attempt}), "
                             f"retrying in {delay}s...")
                       time.sleep(delay)
-                      delay = min(delay * 1.5, 10)  # gentle backoff, cap at 10s
+                      delay = min(delay * 1.5, 10)
                       continue
-                  # Any other status is a real failure, not a readiness issue.
                   print(f"::error::send_input failed: {resp.status_code} {resp.text}")
                   sys.exit(1)
 
-          # 1. Create a bash console
-          console_resp = api(
-              "POST",
-              "/consoles/",
-              json={"executable": "bash", "working_directory": PROJECT_DIR},
-          )
-          console = console_resp.json()
-          console_id = console["id"]
-          print(f"Created console {console_id}")
+          # ---- Console acquisition: pinned -> dynamic lookup -> create new ----
+          console_id = None
+          created_new = False
 
-          try:
-              # 2. Nudge the backend awake. Creating the console record doesn't
-              # start its process; polling output a couple of times, plus the
-              # retry loop in send_input_with_retry, gives PA time to spin it up.
+          if PINNED_CONSOLE_ID:
+              if console_is_responsive(PINNED_CONSOLE_ID):
+                  console_id = PINNED_CONSOLE_ID
+                  print(f"Reusing pinned console {console_id}")
+              else:
+                  print(f"Pinned console {PINNED_CONSOLE_ID} not responsive, "
+                        f"falling back to lookup/create...")
+
+          if console_id is None:
+              existing_id = find_existing_console()
+              if existing_id and console_is_responsive(existing_id):
+                  console_id = existing_id
+                  print(f"Reusing existing console {console_id}")
+
+          if console_id is None:
+              console_resp = api(
+                  "POST",
+                  "/consoles/",
+                  json={"executable": "bash", "working_directory": PROJECT_DIR},
+              )
+              console_id = console_resp.json()["id"]
+              created_new = True
+              print(f"Created new console {console_id}")
+              # Warm-up nudge: gives PA a moment to spin up the backend process
+              # before the real deploy command is sent.
               for _ in range(3):
                   api("GET", f"/consoles/{console_id}/get_latest_output/", expect_ok=False)
                   time.sleep(2)
 
-              # 3. Send the real deploy command, retrying past any 412s.
+          try:
               cmd = (
                   f"cd '{PROJECT_DIR}' && "
                   f"git fetch origin main && git checkout main && git pull origin main && "
@@ -132,7 +176,6 @@ jobs:
               send_input_with_retry(console_id, cmd, CONSOLE_READY_TIMEOUT)
               print("Deploy command accepted, waiting for completion...")
 
-              # 4. Poll for the marker to know when the command finished.
               deadline = time.time() + DEPLOY_TIMEOUT
               output = ""
               while time.time() < deadline:
@@ -155,12 +198,14 @@ jobs:
               print("Deploy commands completed successfully.")
 
           finally:
-              # 5. Clean up the console regardless of outcome.
-              try:
-                  api("DELETE", f"/consoles/{console_id}/", expect_ok=False)
-                  print(f"Deleted console {console_id}")
-              except Exception as e:
-                  print(f"Warning: failed to delete console {console_id}: {e}")
+              # Only delete consoles this run created. A pinned or reused
+              # console is left running for the next deploy.
+              if created_new:
+                  try:
+                      api("DELETE", f"/consoles/{console_id}/", expect_ok=False)
+                      print(f"Deleted console {console_id}")
+                  except Exception as e:
+                      print(f"Warning: failed to delete console {console_id}: {e}")
           PYEOF
 
       - name: Reload web app via PythonAnywhere API
