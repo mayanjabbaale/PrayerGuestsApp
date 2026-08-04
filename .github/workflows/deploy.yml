@@ -166,16 +166,24 @@ jobs:
           try:
               cmd = (
                   f"bash -lc \"set -o pipefail; set -x; "
+                  f"status=0; "
                   f"echo '--- DEPLOY START ---'; "
                   f"cd '{PROJECT_DIR}' || {{ echo 'ERROR: failed to cd {PROJECT_DIR}'; exit 1; }}; "
                   f"echo '=== GIT: fetch/checkout/pull ==='; "
-                  f"git fetch origin main || true; git checkout main || true; git pull origin main || true; "
-                  f"echo '=== ACTIVATE VENV ==='; source '{VENV_PATH}/bin/activate' || {{ echo 'ERROR: failed to source venv'; exit 1; }}; "
-                  f"echo '=== PIP INSTALL ==='; python -m pip install -r requirements.txt -v --no-cache-dir || echo 'pip install failed'; "
-                  f"echo '=== MIGRATE ==='; python manage.py migrate --noinput || echo 'migrate failed'; "
-                  f"echo '=== COLLECTSTATIC ==='; python manage.py collectstatic --noinput || echo 'collectstatic failed'; "
-                  f"rc=$?; echo 'DEPLOY EXIT CODE:' $rc; "
-                  f"if [ $rc -ne 0 ]; then echo {MARKER}_FAIL:$rc; else echo {MARKER}_OK; fi\"\n"
+                  f"git fetch origin main && git checkout main && git pull origin main; "
+                  f"status=$?; if [ $status -ne 0 ]; then echo 'GIT step failed with exit code $status'; echo {MARKER}_FAIL:$status; exit $status; fi; "
+                  f"echo '=== ACTIVATE VENV ==='; "
+                  f"source '{VENV_PATH}/bin/activate' || {{ status=$?; echo 'ERROR: failed to source venv'; echo {MARKER}_FAIL:$status; exit $status; }}; "
+                  f"echo '=== PIP INSTALL ==='; "
+                  f"python -m pip install -r requirements.txt -v --no-cache-dir; "
+                  f"status=$?; if [ $status -ne 0 ]; then echo 'PIP step failed with exit code $status'; echo {MARKER}_FAIL:$status; exit $status; fi; "
+                  f"echo '=== MIGRATE ==='; "
+                  f"python manage.py migrate --noinput; "
+                  f"status=$?; if [ $status -ne 0 ]; then echo 'MIGRATE step failed with exit code $status'; echo {MARKER}_FAIL:$status; exit $status; fi; "
+                  f"echo '=== COLLECTSTATIC ==='; "
+                  f"python manage.py collectstatic --noinput; "
+                  f"status=$?; if [ $status -ne 0 ]; then echo 'COLLECTSTATIC step failed with exit code $status'; echo {MARKER}_FAIL:$status; exit $status; fi; "
+                  f"echo 'DEPLOY EXIT CODE: 0'; echo {MARKER}_OK\"\n"
               )
               send_input_with_retry(console_id, cmd, CONSOLE_READY_TIMEOUT)
               print("Deploy command accepted, waiting for completion...")
@@ -197,6 +205,7 @@ jobs:
 
               if f"{MARKER}_FAIL" in output:
                   print("::error::Deploy command reported failure")
+                  print(output[-8000:])
                   sys.exit(1)
 
               print("Deploy commands completed successfully.")
