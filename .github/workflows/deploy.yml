@@ -21,33 +21,38 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Configure SSH access
-        shell: bash
+      - name: Setup SSH agent
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.PA_SSH_KEY }}
+
+      - name: Verify SSH variables
+        env:
+          PA_HOST: ${{ secrets.PA_HOST }}
+          PA_USERNAME: ${{ secrets.PA_USERNAME }}
         run: |
-          set -euo pipefail
-          mkdir -p ~/.ssh
-          umask 077
-
-          if [ -z "${PA_SSH_KEY:-}" ]; then
-            echo "ERROR: PA_SSH_KEY is not set" >&2
-            exit 1
-          fi
-
           if [ -z "${PA_HOST:-}" ] || [ -z "${PA_USERNAME:-}" ]; then
-            echo "ERROR: PA_HOST or PA_USERNAME is not set" >&2
+            echo "::error::PA_HOST or PA_USERNAME is not set"
             exit 1
           fi
+          echo "PA_HOST and PA_USERNAME are set."
 
-          printf '%s\n' "$PA_SSH_KEY" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -H "$PA_HOST" >> ~/.ssh/known_hosts
+      - name: Add host to known_hosts
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan -H "${{ secrets.PA_HOST }}" >> ~/.ssh/known_hosts
 
       - name: Deploy to PythonAnywhere
         shell: bash
+        env:
+          PA_HOST: ${{ secrets.PA_HOST }}
+          PA_USERNAME: ${{ secrets.PA_USERNAME }}
+          PA_PROJECT_DIR: ${{ secrets.PA_PROJECT_DIR || '/home/tardigrade/PrayerGuestsApp' }}
+          PA_VENV_PATH: ${{ secrets.PA_VENV_PATH || '/home/tardigrade/.virtualenvs/myenv' }}
+          PA_WSGI_PATH: ${{ secrets.PA_WSGI_PATH || '/var/www/tardigrade_pythonanywhere_com_wsgi.py' }}
         run: |
           set -euo pipefail
-
-          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=yes -o BatchMode=yes "$PA_USERNAME@$PA_HOST" "
+          ssh -o StrictHostKeyChecking=yes -o BatchMode=yes "$PA_USERNAME@$PA_HOST" "
             set -e
             cd '$PA_PROJECT_DIR'
             git fetch origin main
