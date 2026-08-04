@@ -1,0 +1,32 @@
+name: Django CI/CD Pipeline
+
+on:
+  push:
+    branches:
+      - main  # Triggers the deployment when pushing to main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v4
+
+    - name: Configure SSH Key
+      run: |
+        mkdir -p ~/.ssh
+        echo "${{ secrets.PA_SSH_KEY }}" > ~/.ssh/id_rsa
+        chmod 600 ~/.ssh/id_rsa
+        ssh-keyscan -H ${{ secrets.PA_HOST }} >> ~/.ssh/known_hosts
+
+    - name: Remote Pull and Web Reload
+      run: |
+        ssh ${{ secrets.PA_USERNAME }}@${{ secrets.PA_HOST }} << 'EOF'
+          cd ~/PrayerGuestsApp
+          git pull origin main
+          workon myenv
+          python manage.py migrate
+          python manage.py collectstatic --noinput
+          touch /var/www/tardigrade_pythonanywhere_com_wsgi.py
+        EOF
