@@ -17,8 +17,8 @@ jobs:
       PA_PROJECT_DIR: ${{ secrets.PA_PROJECT_DIR || '/home/tardigrade/PrayerGuestsApp' }}
       PA_VENV_PATH: ${{ secrets.PA_VENV_PATH || '/home/tardigrade/.virtualenvs/myenv' }}
       PA_CONSOLE_ID: ${{ secrets.PA_CONSOLE_ID || '' }}
-      CONSOLE_READY_TIMEOUT: "90"   # seconds to wait for a cold console to accept input
-      DEPLOY_TIMEOUT: "300"         # seconds to wait for deploy commands to finish
+      CONSOLE_READY_TIMEOUT: "180"  # seconds to wait for a cold console to accept input
+      DEPLOY_TIMEOUT: "900"         # seconds to wait for deploy commands to finish
 
     steps:
       - name: Verify required secrets
@@ -165,13 +165,17 @@ jobs:
 
           try:
               cmd = (
-                  f"cd '{PROJECT_DIR}' && "
-                  f"git fetch origin main && git checkout main && git pull origin main && "
-                  f"source '{VENV_PATH}/bin/activate' && "
-                  f"python -m pip install -r requirements.txt && "
-                  f"python manage.py migrate --noinput && "
-                  f"python manage.py collectstatic --noinput && "
-                  f"echo {MARKER}_OK || echo {MARKER}_FAIL\n"
+                  f"bash -lc \"set -o pipefail; set -x; "
+                  f"echo '--- DEPLOY START ---'; "
+                  f"cd '{PROJECT_DIR}' || {{ echo 'ERROR: failed to cd {PROJECT_DIR}'; exit 1; }}; "
+                  f"echo '=== GIT: fetch/checkout/pull ==='; "
+                  f"git fetch origin main || true; git checkout main || true; git pull origin main || true; "
+                  f"echo '=== ACTIVATE VENV ==='; source '{VENV_PATH}/bin/activate' || {{ echo 'ERROR: failed to source venv'; exit 1; }}; "
+                  f"echo '=== PIP INSTALL ==='; python -m pip install -r requirements.txt -v --no-cache-dir || echo 'pip install failed'; "
+                  f"echo '=== MIGRATE ==='; python manage.py migrate --noinput || echo 'migrate failed'; "
+                  f"echo '=== COLLECTSTATIC ==='; python manage.py collectstatic --noinput || echo 'collectstatic failed'; "
+                  f"rc=$?; echo 'DEPLOY EXIT CODE:' $rc; "
+                  f"if [ $rc -ne 0 ]; then echo {MARKER}_FAIL:$rc; else echo {MARKER}_OK; fi\"\n"
               )
               send_input_with_retry(console_id, cmd, CONSOLE_READY_TIMEOUT)
               print("Deploy command accepted, waiting for completion...")
@@ -186,10 +190,10 @@ jobs:
                       break
               else:
                   print("::error::Timed out waiting for deploy command to finish")
-                  print(output[-4000:])
+                  print(output[-8000:])
                   sys.exit(1)
 
-              print(output[-4000:])  # tail of console output for logs
+              print(output[-8000:])  # tail of console output for logs
 
               if f"{MARKER}_FAIL" in output:
                   print("::error::Deploy command reported failure")
