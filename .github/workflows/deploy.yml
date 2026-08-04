@@ -24,21 +24,36 @@ jobs:
         run: |
           mkdir -p ~/.ssh
           umask 077
-          echo "${{ secrets.PA_SSH_KEY }}" > ~/.ssh/id_rsa
+          # write key safely (preserve newlines)
+          printf '%s\n' "$PA_SSH_KEY" > ~/.ssh/id_rsa
           chmod 600 ~/.ssh/id_rsa
+
+          # basic checks
+          if [ -z "$PA_HOST" ] || [ -z "$PA_USERNAME" ]; then
+            echo "ERROR: PA_HOST or PA_USERNAME is not set" >&2
+            exit 1
+          fi
+
+          # add remote host to known_hosts (optional: change to StrictHostKeyChecking=no during debug)
           ssh-keyscan -H "$PA_HOST" >> ~/.ssh/known_hosts
 
       - name: Deploy to PythonAnywhere
         run: |
-          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=yes "$PA_USERNAME@$PA_HOST" "
-            set -e
-            cd '$PA_PROJECT_DIR'
-            git fetch origin main
-            git checkout main
-            git pull origin main
-            source '$PA_VENV_PATH/bin/activate'
-            python -m pip install -r requirements.txt
-            python manage.py migrate --noinput
-            python manage.py collectstatic --noinput
-            touch '$PA_WSGI_PATH'
-          "
+          # fail fast and print commands for troubleshooting
+          set -euxo pipefail
+
+          # Option A: use a here-doc so local variables are expanded and the remote receives actual paths
+          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=yes "$PA_USERNAME@$PA_HOST" <<EOF
+          set -e
+          cd $PA_PROJECT_DIR
+          git fetch origin main
+          git checkout main
+          git pull origin main
+          source $PA_VENV_PATH/bin/activate
+          python -m pip install -r requirements.txt
+          python manage.py migrate --noinput
+          python manage.py collectstatic --noinput
+          touch $PA_WSGI_PATH
+          EOF
+
+          # (If you need more debug, temporarily add -v to the ssh command above: ssh -vvv -i ...)
