@@ -13,13 +13,19 @@ jobs:
     - name: Checkout Code
       uses: actions/checkout@v4
 
-    - name: Configure SSH Key
+    # 1. Automatically load and format the private key securely in memory
+    - name: Setup SSH Agent
+      uses: webfactory/ssh-agent@v0.9.0
+      with:
+        ssh-private-key: ${{ secrets.PA_SSH_KEY }}
+
+    # 2. Register the PythonAnywhere server fingerprint to bypass trust prompts
+    - name: Add Host to Known Hosts
       run: |
         mkdir -p ~/.ssh
-        echo "${{ secrets.PA_SSH_KEY }}" > ~/.ssh/id_rsa
-        chmod 600 ~/.ssh/id_rsa
         ssh-keyscan -H ${{ secrets.PA_HOST }} >> ~/.ssh/known_hosts
 
+    # 3. Securely log in and deploy your Django app modifications
     - name: Remote Pull and Web Reload
       run: |
         ssh ${{ secrets.PA_USERNAME }}@${{ secrets.PA_HOST }} << 'EOF'
