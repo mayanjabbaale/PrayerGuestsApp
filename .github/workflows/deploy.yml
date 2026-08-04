@@ -12,6 +12,7 @@ jobs:
     env:
       PA_HOST: ${{ secrets.PA_HOST }}
       PA_USERNAME: ${{ secrets.PA_USERNAME }}
+      PA_SSH_KEY: ${{ secrets.PA_SSH_KEY }}
       PA_PROJECT_DIR: ${{ secrets.PA_PROJECT_DIR || '/home/tardigrade/PrayerGuestsApp' }}
       PA_VENV_PATH: ${{ secrets.PA_VENV_PATH || '/home/tardigrade/.virtualenvs/myenv' }}
       PA_WSGI_PATH: ${{ secrets.PA_WSGI_PATH || '/var/www/tardigrade_pythonanywhere_com_wsgi.py' }}
@@ -21,39 +22,40 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Configure SSH access
+        shell: bash
         run: |
+          set -euo pipefail
           mkdir -p ~/.ssh
           umask 077
-          # write key safely (preserve newlines)
-          printf '%s\n' "$PA_SSH_KEY" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
 
-          # basic checks
-          if [ -z "$PA_HOST" ] || [ -z "$PA_USERNAME" ]; then
+          if [ -z "${PA_SSH_KEY:-}" ]; then
+            echo "ERROR: PA_SSH_KEY is not set" >&2
+            exit 1
+          fi
+
+          if [ -z "${PA_HOST:-}" ] || [ -z "${PA_USERNAME:-}" ]; then
             echo "ERROR: PA_HOST or PA_USERNAME is not set" >&2
             exit 1
           fi
 
-          # add remote host to known_hosts (optional: change to StrictHostKeyChecking=no during debug)
+          printf '%s\n' "$PA_SSH_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
           ssh-keyscan -H "$PA_HOST" >> ~/.ssh/known_hosts
 
       - name: Deploy to PythonAnywhere
+        shell: bash
         run: |
-          # fail fast and print commands for troubleshooting
-          set -euxo pipefail
+          set -euo pipefail
 
-          # Option A: use a here-doc so local variables are expanded and the remote receives actual paths
-          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=yes "$PA_USERNAME@$PA_HOST" <<EOF
-          set -e
-          cd $PA_PROJECT_DIR
-          git fetch origin main
-          git checkout main
-          git pull origin main
-          source $PA_VENV_PATH/bin/activate
-          python -m pip install -r requirements.txt
-          python manage.py migrate --noinput
-          python manage.py collectstatic --noinput
-          touch $PA_WSGI_PATH
-          EOF
-
-          # (If you need more debug, temporarily add -v to the ssh command above: ssh -vvv -i ...)
+          ssh -i ~/.ssh/id_rsa -o StrictHostKeyChecking=yes -o BatchMode=yes "$PA_USERNAME@$PA_HOST" "
+            set -e
+            cd '$PA_PROJECT_DIR'
+            git fetch origin main
+            git checkout main
+            git pull origin main
+            source '$PA_VENV_PATH/bin/activate'
+            python -m pip install -r requirements.txt
+            python manage.py migrate --noinput
+            python manage.py collectstatic --noinput
+            touch '$PA_WSGI_PATH'
+          "
