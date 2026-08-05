@@ -14,3 +14,31 @@ jobs:
           username: ${{ secrets.PA_USERNAME }}
           api_token: ${{ secrets.PA_API_TOKEN }}
           domain_name: ${{ secrets.PA_DOMAIN }}
+        continue-on-error: true   # allow following retry step to run
+
+      - name: Reload PythonAnywhere webapp (with retries)
+        env:
+          PA_USERNAME: ${{ secrets.PA_USERNAME }}
+          PA_API_TOKEN: ${{ secrets.PA_API_TOKEN }}
+          PA_DOMAIN: ${{ secrets.PA_DOMAIN }}
+        run: |
+          set -e
+          url="https://www.pythonanywhere.com/api/v0/user/${PA_USERNAME}/webapps/${PA_DOMAIN}/reload/"
+          for attempt in 1 2 3 4 5; do
+            status=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$url" \
+              -H "Authorization: Token ${PA_API_TOKEN}")
+            if [ "$status" = "200" ] || [ "$status" = "201" ] || [ "$status" = "202" ]; then
+              echo "Reload succeeded (HTTP $status)"
+              exit 0
+            fi
+            if [ "$status" = "409" ]; then
+              echo "Reload returned 409 (conflict). Another reload might be in progress. Retrying (attempt $attempt)..."
+              sleep $((attempt * 5))
+              continue
+            fi
+            echo "Reload failed with status $status"
+            exit 1
+          done
+          echo "Reload failed after retries"
+          exit 1
+        
