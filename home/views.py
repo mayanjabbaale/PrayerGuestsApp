@@ -16,7 +16,7 @@ def _serialize(g):
     return {
         "id": g.id,
         "name": g.name or "",
-        "age": g.age if g.age is not None else "",
+        "age": g.age,
         "phone_number": g.phone_number or "",
         "address": g.address or "",
         "prayer_notes": g.prayer_notes or "",
@@ -25,15 +25,21 @@ def _serialize(g):
 
 
 def _apply(g, data):
-    """Apply a dict of fields to a Guests row, ignoring unknown keys."""
+    """Apply a dict of fields to a Guests row, ignoring unknown keys.
+
+    Raises ValueError if `age` is provided but cannot be parsed as an integer.
+    """
     if "name" in data:
         g.name = data["name"] or ""
     if "age" in data:
-        # Empty string -> treat as 0 so the form is forgiving.
-        try:
-            g.age = int(data["age"]) if data["age"] != "" else 0
-        except (TypeError, ValueError):
-            g.age = 0
+        raw = data["age"]
+        if raw in ("", None):
+            g.age = None
+        else:
+            try:
+                g.age = int(raw)
+            except (TypeError, ValueError):
+                raise ValueError("age must be an integer")
     if "phone_number" in data:
         g.phone_number = data["phone_number"] or ""
     if "address" in data:
@@ -45,7 +51,10 @@ def _apply(g, data):
 
 
 def _method_or_405(request, *allowed):
-    """Return None if request.method is allowed, else an HttpResponseNotAllowed."""
+    """
+    Return None if request.method is allowed,
+    else an HttpResponseNotAllowed.
+    """
     if request.method in allowed:
         return None
     return HttpResponseNotAllowed(allowed)
@@ -53,7 +62,10 @@ def _method_or_405(request, *allowed):
 
 @ensure_csrf_cookie
 def home(request):
-    """Render the guests page. CSRF cookie is set so fetch() can authenticate."""
+    """
+    Render the guests page.
+    CSRF cookie is set so fetch() can authenticate.
+    """
     guests = Guests.objects.all()
     return render(request, "home/home.html", {"guests": guests})
 
@@ -67,7 +79,10 @@ def guest_create(request):
         return HttpResponseBadRequest("invalid JSON")
 
     g = Guests()
-    _apply(g, data)
+    try:
+        _apply(g, data)
+    except ValueError as exc:
+        return HttpResponseBadRequest(str(exc))
     if not g.name:
         return HttpResponseBadRequest("name is required")
     g.save()
@@ -87,7 +102,10 @@ def guest_update(request, guest_id):
     except json.JSONDecodeError:
         return HttpResponseBadRequest("invalid JSON")
 
-    _apply(g, data)
+    try:
+        _apply(g, data)
+    except ValueError as exc:
+        return HttpResponseBadRequest(str(exc))
     g.save()
     return JsonResponse(_serialize(g))
 

@@ -84,7 +84,7 @@
                 <td class="text-cell px-4 py-3 border-r-2 border-black align-top"
                     contenteditable="true" data-field="name" data-placeholder="Full name"></td>
                 <td class="text-cell is-num px-4 py-3 border-r-2 border-black align-top"
-                    contenteditable="true" data-field="age" data-placeholder="0"></td>
+                    contenteditable="true" data-field="age"></td>
                 <td class="text-cell px-4 py-3 border-r-2 border-black align-top"
                     contenteditable="true" data-field="phone_number" data-placeholder="+1 555 000 0000"></td>
                 <td class="text-cell px-4 py-3 border-r-2 border-black align-top"
@@ -116,7 +116,7 @@
             };
             for (const [field, value] of Object.entries(fieldMap)) {
                 const td = tr.querySelector(`[data-field="${field}"]`);
-                if (td) td.textContent = value === 0 ? "0" : (value || "");
+                if (td) td.textContent = value === 0 ? "" : (value == null ? "" : String(value));
             }
             const notesTd = tr.querySelector('[data-field="prayer_notes"]');
             notesTd.textContent = data.prayer_notes || "";
@@ -189,14 +189,12 @@
             if (!id) {
                 if (field === "name" && value) {
                     try {
-                        const created = await api("POST", "/api/guests/", {
-                            name: value,
-                            age: 0,
-                            phone_number: "",
-                            address: "",
-                            prayer_notes: "",
-                            prayed_for: false,
-                        });
+                        const payload = { name: value, phone_number: "", address: "", prayer_notes: "", prayed_for: false };
+                        const ageCell = tr.querySelector('[data-field="age"]');
+                        const ageText = ageCell?.textContent.trim();
+                        if (ageText !== "") payload.age = Number(ageText);
+
+                        const created = await api("POST", "/api/guests/", payload);
                         hydrateRow(tr, created);
                         refreshStats();
                         removeEmptyStateRow();
@@ -210,7 +208,7 @@
 
             try {
                 const payload = { [field]: value };
-                if (field === "age") payload.age = value === "" ? 0 : Number(value);
+                if (field === "age") payload.age = value === "" ? null : Number(value);
                 const updated = await api("PATCH", `/api/guests/${id}/`, payload);
                 hydrateRow(tr, updated);
                 if (activeDrawerRow === tr) hydrateDrawer(tr);
