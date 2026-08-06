@@ -8,5 +8,4 @@ urlpatterns = [
     path("api/guests/<int:guest_id>/",
          views.guest_update, name="guest_update"),
     path("api/guests/<int:guest_id>/delete/",
-         views.guest_delete, name="guest_delete"),
-]
+         views.guest_delete, name="guest_delete"),]
