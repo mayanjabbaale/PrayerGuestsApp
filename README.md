@@ -2,7 +2,7 @@
 
 A simple Django web app for tracking prayer guests: their contact details, prayer notes, and whether they've been prayed for. Built with a Bauhaus-inspired UI, inline-editable table cells, and a details drawer — no page reloads needed for day-to-day use.
 
-Link --> https://www.pythonanywhere.com/user/tardigrade/webapps/#tab_id_tardigrade_pythonanywhere_com
+Link --> [(https://tardigrade.pythonanywhere.com/)
 
 ## Features
 
